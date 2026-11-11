@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+.pytest_cache/
+data/raw/*
+data/clean/*
+!data/**/.gitkeep
+logs/
+results/predictions_*.csv
+paper/figures/
+paper/*.log
+paper/*.aux
+paper/*.out
+GOAL.txt
+PLAN_v1_original.md
