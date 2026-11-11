@@ -1,4 +1,4 @@
-# TunMOS
+# TunCast
 
 Station-level correction (MOS) of ECMWF IFS, ECMWF AIFS and NCEP GFS forecasts for 12 Tunisian
 SYNOP stations, Sfax first. Daily Tmax, Tmin and rain, 1-7 days ahead, with LightGBM, conformal
