@@ -4,7 +4,7 @@ Station-level correction (MOS) of ECMWF IFS, ECMWF AIFS and NCEP GFS forecasts f
 SYNOP stations, Sfax first. Daily Tmax, Tmin and rain, 1-7 days ahead, with LightGBM, conformal
 intervals and SHAP.
 
-Akram Ben Fekih, Master's student, ISSAT Sousse.
+Akram Ben Fekih, University of Sousse, Tunisia.
 
 Short write-up: [`paper/main.pdf`](paper/main.pdf). Full tables: [`results/results.md`](results/results.md).
 
