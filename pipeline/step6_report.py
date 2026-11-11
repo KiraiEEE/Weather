@@ -18,6 +18,8 @@ TEMP_METHODS = ["raw", "climatology", "persistence", "bias_corrected", "linear",
 # colour-blind safe colours
 COLORS = {"lightgbm": "#2a78d6", "raw": "#eb6834", "linear": "#1baf7a", "bias_corrected": "#eda100",
           "logistic": "#1baf7a", "climatology": "#eda100"}
+LABELS = {"raw": "raw", "bias_corrected": "30-day bias correction", "linear": "linear MOS",
+          "lightgbm": "LightGBM", "logistic": "logistic regression"}
 plt.rcParams.update({"axes.spines.top": False, "axes.spines.right": False, "axes.grid": True,
                      "grid.color": "#e1e0d9", "font.size": 9})
 
@@ -105,8 +107,8 @@ def plot_mae_by_lead(mae_table):
                 if t.empty:
                     continue
                 ax.plot(t.lead, t[method], "--" if method == "raw" else "-", marker="o", ms=4, lw=2,
-                        color=COLORS[method], label=method)
-            ax.set_title(f"{model} - {target}")
+                        color=COLORS[method], label=LABELS[method])
+            ax.set_title(f"{model}, {target.capitalize()}")
             ax.set_xlabel("days ahead")
         axes[i, 0].set_ylabel("mean absolute error (°C)")
     axes[0, 0].legend(fontsize=7, frameon=False)
@@ -125,8 +127,8 @@ def plot_reliability(rain):
             r = pd.DataFrame({"p": g[f"p_{method}"], "o": g.obs >= WET_DAY_MM, "b": bins}).groupby("b").agg(
                 p=("p", "mean"), o=("o", "mean"), n=("o", "size"))
             r = r[r.n >= 10]
-            ax.plot(r.p, r.o, marker="o", ms=4, lw=2, color=COLORS[method], label=method)
-        ax.set_title(f"{model}: chance of rain")
+            ax.plot(r.p, r.o, marker="o", ms=4, lw=2, color=COLORS[method], label=LABELS[method])
+        ax.set_title(f"{model}, P(rain >= 1 mm)")
         ax.set_xlabel("forecast probability")
         ax.legend(fontsize=7)
     axes[0, 0].set_ylabel("observed frequency")

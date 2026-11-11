@@ -1,112 +1,234 @@
-\documentclass[11pt]{article}
-\usepackage[a4paper,margin=2.3cm]{geometry}
+\documentclass{article}
+
+\usepackage{arxiv}
+
+\usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
-\usepackage{lmodern}
-\usepackage{microtype}
-\usepackage{amsmath}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue!60!black,citecolor=blue!60!black,urlcolor=blue!60!black]{hyperref}
+\usepackage{url}
 \usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{microtype}
 \usepackage{graphicx}
-\usepackage{caption}
-\usepackage[hidelinks]{hyperref}
-\captionsetup{font=small,labelfont=bf}
+\usepackage[round]{natbib}
 \graphicspath{{figures/}}
 
-\title{\textbf{Correcting IFS, AIFS and GFS forecasts\\at twelve Tunisian weather stations}}
-\author{Akram Ben Fekih \\ \small University of Sousse, Tunisia}
+\title{Correcting IFS, AIFS and GFS forecasts at twelve Tunisian weather stations}
+
+\renewcommand{\shorttitle}{Correcting IFS, AIFS and GFS forecasts in Tunisia}
+\renewcommand{\headeright}{Preprint}
+\renewcommand{\undertitle}{Preprint}
+
+\author{Akram Ben Fekih \\
+  University of Sousse \\
+  Sousse, Tunisia}
+
 \date{November 2026}
 
 \begin{document}
 \maketitle
 
 \begin{abstract}
-We correct daily maximum and minimum temperature and rain forecasts from ECMWF IFS, ECMWF AIFS and NCEP GFS at 12 Tunisian SYNOP stations, 1 to 7 days ahead. Temperature is corrected with quantile LightGBM plus conformal intervals, rain with a calibrated two-stage model. Models are trained month by month and tested on September 2025 to October 2026. At day 1 the Tmax mean absolute error (MAE) drops by 49\% for IFS, 50\% for AIFS and 39\% for GFS (63\% at Sfax), and the gain is significant at every lead. After correction AIFS has the lowest error (1.21\,$^\circ$C over all leads). Most of the gain, though, is plain bias removal: LightGBM is 2--4\% better than linear MOS for IFS and GFS and not significantly better for AIFS. Conformal recalibration raises the coverage of the 80\% intervals from 69--78\% to 80--84\%. Rain probabilities reach a Brier skill score of about 0.2 against climatology, while the raw forecasts are below climatology. A GRU did not improve on LightGBM.
+We correct daily maximum and minimum temperature and rain forecasts from ECMWF IFS, ECMWF AIFS and NCEP GFS at 12 Tunisian SYNOP stations, 1 to 7 days ahead. Temperature is corrected with quantile LightGBM plus conformal intervals, rain with a calibrated two-stage model. Models are retrained every month and tested on September 2025 to October 2026. At day 1 the $T_{\max}$ mean absolute error (MAE) drops by 49\% for IFS, 50\% for AIFS and 39\% for GFS (63\% at Sfax), and the gain is significant at every lead. After correction AIFS has the lowest error (1.21\,$^\circ$C averaged over leads). Most of the gain, though, is bias removal: LightGBM is 2--4\% better than linear MOS for IFS and GFS and not significantly better for AIFS. Conformal recalibration raises the coverage of the 80\% intervals from 69--78\% to 80--84\%. Rain probabilities reach a Brier skill score of about 0.2 against climatology, while the raw forecasts are below climatology. A GRU did not improve on LightGBM.
 \end{abstract}
 
-\section{Introduction}
-The ECMWF IFS and NCEP GFS fields used here are on a 0.25$^\circ$ grid (about 25\,km), which is too coarse for the Tunisian coast and the dry interior. Their errors at a given station are therefore partly systematic, and Model Output Statistics (MOS) has long been used to remove such errors with regressions on past forecast--observation pairs \cite{glahn1972}. ECMWF now also runs a machine-learned global model, AIFS \cite{lang2024aifs}. Here we check whether AIFS needs the same kind of local correction at Tunisian stations, and how it compares with the two physical models once corrected.
+\keywords{post-processing \and model output statistics \and AIFS \and LightGBM \and conformal prediction \and Tunisia}
 
-This note looks at three things: how much a gradient-boosted MOS reduces temperature errors of the three models at leads 1--7, whether the resulting intervals and rain probabilities are calibrated, and which inputs the corrections depend on. All data are free and the code is public.
+\section{Introduction}
+\label{sec:intro}
+
+The ECMWF IFS and NCEP GFS fields used in this study are on a 0.25$^\circ$ grid (about 25\,km). At that resolution the Tunisian coastline and the dry interior are only roughly represented, and the error at a given station is partly systematic. Model Output Statistics (MOS) removes this kind of error with regressions on past forecast--observation pairs \citep{glahn1972}. Since then many statistical and machine-learning methods have been used for the same purpose \citep{vannitsem2021}, including neural networks \citep{rasp2018}. ECMWF now also runs a machine-learned global model, AIFS \citep{lang2024aifs}, and it is not obvious whether its station errors behave like those of the physical models.
+
+We look at three questions:
+\begin{enumerate}
+  \item How much does a gradient-boosted MOS reduce the temperature errors of IFS, AIFS and GFS at leads 1--7?
+  \item Are the resulting 80\% intervals and rain probabilities calibrated?
+  \item Which inputs do the corrections depend on?
+\end{enumerate}
+All inputs are freely available and the code is public.
 
 \section{Data}
-\paragraph{Observations.} We use SYNOP reports from Sfax, Tunis, Kairouan, Gab\`es, Djerba, Tozeur, Gafsa, Bizerte, Kelibia, Jendouba, Tabarka and Enfidha. Reports up to 2025-08-24 come from NOAA Global-Hourly; NOAA has no Tunisian data after that date, so later reports are taken from Ogimet and decoded with our own parser. Both sources give identical values on the 66--84 days per station where they overlap. Daily values follow the SYNOP conventions (UTC): $T_{\max}(D)$ is the maximum over 06--18 on day $D$, $T_{\min}(D)$ the minimum over the 24\,h ending at 06 on $D$, and $P(D)$ the rain from 06 on $D$ to 06 on $D{+}1$. We did not use Meteostat, because its rain for these stations comes from the DWD MOSMIX forecast. Simple checks (range, $T_{\min}>T_{\max}$, spikes, stuck values, $|z|>6$ against the monthly median) removed 48 of about 160\,000 values.
+\label{sec:data}
 
-\paragraph{Forecasts.} Archived hourly forecasts are taken from the Open-Meteo Previous-Runs API for IFS (from February 2024), AIFS (from February 2025) and GFS (from February 2024): 2\,m temperature, rain, dew point, cloud cover and 10\,m wind. For a forecast at lead $L$ valid on day $D$, every hour is taken from the run that was available at the end of $I=D-L$, and the daily windows are the same as for the observations. Rain over 06--06 needs one more day of the archive, so rain stops at lead 6.
+\subsection{Observations}
+We use SYNOP reports from the 12 stations in Table~\ref{tab:stations}. Reports up to 2025-08-24 come from NOAA Global-Hourly \citep{smith2011}. NOAA has no Tunisian reports after that date, so later reports are taken from Ogimet and decoded with our own parser. The two sources give identical values on the 66--84 days per station where they overlap. Daily values follow the SYNOP conventions (all times UTC): $T_{\max}(D)$ is the maximum over 06--18 on day $D$, $T_{\min}(D)$ the minimum over the 24\,h ending at 06 on $D$, and $P(D)$ the rain from 06 on $D$ to 06 on $D{+}1$. A day with $P\ge1$\,mm is a wet day. We did not use Meteostat, because its rain values for these stations come from the DWD MOSMIX forecast and not from measurements.
+
+Quality control sets a value to missing if it is out of range, if $T_{\min}>T_{\max}$, if it jumps by more than 12\,$^\circ$C and back, if it repeats for five days, or if it is more than six robust standard deviations from the station's monthly median. This removed 48 of about 160\,000 values. Gab\`es has SYNOP reports only from 2019, and Gafsa has many missing night reports (Table~\ref{tab:stations}).
+
+\begin{table}[t]
+\caption{Stations, ordered from north to south, and number of valid observations between 2025-09-01 and 2026-10-25.}
+\label{tab:stations}
+\centering\small
+\input{tab_stations}
+\end{table}
+
+\subsection{Forecasts}
+Archived hourly forecasts come from the Open-Meteo Previous-Runs API \citep{openmeteo} for IFS and GFS (from February 2024) and AIFS (from February 2025). We use 2\,m temperature, rain, 2\,m dew point, total cloud cover and 10\,m wind. For a forecast at lead $L$ valid on day $D$, every hour is taken from the run that was available at the end of $I=D-L$, and the daily windows are the same as for the observations. The archive goes back 7 days, and rain over 06--06 needs one extra day, so rain is only available up to lead 6.
 
 \section{Methods}
-\paragraph{Inputs.} A forecast for day $D$ at lead $L$ is assumed to be issued at the end of day $I=D-L$. It can use $T_{\max}(I)$, $T_{\min}(I)$ and $P(I-1)$, since $P(I)$ is only complete at 06\,UTC on $I{+}1$, and forecast errors up to $I$. A unit test changes every observation after $I$ and checks that no input changes.
+\label{sec:methods}
 
-\paragraph{Temperature.} The baselines are the raw forecast, climatology (31-day smoothed, 2014--2023), persistence, a 30-day running bias correction and linear MOS. The main model is LightGBM \cite{ke2017lightgbm} fitted with quantile loss ($\tau=0.1,0.5,0.9$) to the error of the raw forecast. It has 17 inputs: the forecast fields, lead, day of year, station position, the last observations, climatology and the 30-day bias. Predicting the error rather than the temperature itself lets the corrected forecast go beyond the range seen in training. The 10--90\% interval is then recalibrated with conformalized quantile regression \cite{romano2019cqr} on the previous 365 days.
+\subsection{Predictors}
+A forecast for day $D$ at lead $L$ is treated as issued at the end of day $I=D-L$. It may use $T_{\max}(I)$, $T_{\min}(I)$ and $P(I-1)$ (since $P(I)$ is only complete at 06\,UTC on $I{+}1$), and forecast errors up to $I$. The 17 temperature predictors are the five forecast fields, lead, day of year (sine and cosine), station latitude, longitude and elevation, the last observed $T_{\max}$ and $T_{\min}$, the climatological $T_{\max}$ and $T_{\min}$ (31-day smoothed, 2014--2023), and the mean $T_{\max}$ and $T_{\min}$ forecast errors of the last 30 days. A unit test changes every observation after $I$ and checks that none of the predictors changes.
 
-\paragraph{Rain.} A LightGBM classifier gives $P(\text{rain}\ge1\,\text{mm})$ and is calibrated with isotonic regression on the last quarter of the training period. A second quantile LightGBM, trained on wet days only and on a log scale, gives the amount. Baselines are climatology, the raw forecast as a yes/no event, and logistic regression.
+\subsection{Temperature}
+The baselines are the raw forecast, climatology, persistence of the last observation, the raw forecast minus its 30-day mean error, and linear regression on the same predictors (linear MOS). The main model is LightGBM \citep{ke2017lightgbm} with quantile loss at $\tau=0.1, 0.5, 0.9$, trained on the error of the raw forecast rather than on the temperature itself, so that the corrected forecast is not limited to values seen in training. One model is fitted per NWP model and target, for all stations and leads together. The 10--90\% interval is recalibrated with conformalized quantile regression \citep{romano2019cqr}, using the out-of-sample scores of the previous 365 days for the same model, target and lead.
 
-\paragraph{Evaluation.} For each test month $M$ the models are trained on all rows dated more than 8 days before $M$. The scored period is 2025-09-01 to 2026-10-25 for every model and method, and all methods are compared on the same rows. Confidence intervals come from a block bootstrap over weeks (1000 resamples). SHAP values are computed with TreeSHAP \cite{lundberg2020shap}.
+\subsection{Rain}
+A LightGBM classifier gives the probability of a wet day and is calibrated with isotonic regression on the last quarter of the training period. A quantile LightGBM trained on wet days only, on $\log(1+P)$, gives the median and 90th percentile of the amount. The baselines are climatology, the raw forecast as a yes/no event ($\ge$1\,mm) and logistic regression. For heavy rain ($\ge$10\,mm) we issue a warning when the wet-day probability is at least 0.5 and the 90th percentile of the amount is at least 10\,mm; the raw forecast warns when it forecasts 10\,mm or more.
+
+\subsection{Evaluation}
+For each test month $M$ the models are trained on all rows dated more than 8 days before the start of $M$, so that no training target is observed after the forecasts in $M$ are issued. The months from March to August 2025 are also predicted, but only to calibrate the conformal intervals. The scored period is 2025-09-01 to 2026-10-25 for every model, with 4\,200--4\,700 station-days per lead, and all methods are compared on the same rows. LightGBM settings (400 trees, learning rate 0.03, 15 leaves) were fixed beforehand and not tuned. Confidence intervals come from a block bootstrap over calendar weeks with 1000 resamples, which keeps the correlation between nearby days and between stations on the same day. SHAP values are computed with TreeSHAP \citep{lundberg2020shap}.
 
 \section{Results}
-\paragraph{Temperature.} The corrected forecasts have a lower MAE than the raw ones for every model, lead and target, and none of the 95\% intervals includes zero (Table~\ref{tab:temp}, Fig.~\ref{fig:lead}). At lead 1 the $T_{\max}$ MAE goes from 1.74 to 0.89\,$^\circ$C for IFS, from 1.80 to 0.90 for AIFS and from 1.53 to 0.93 for GFS. The gain gets smaller with lead and is 15--31\% at day 7. At Sfax the raw IFS and AIFS $T_{\max}$ errors are larger (2.1--2.2\,$^\circ$C), possibly because the sea breeze is not resolved, and the reduction at lead 1 is 63\%. The reduction is of similar size in all seasons (30--51\% for $T_{\max}$ at leads 1--3).
+\label{sec:results}
 
-\begin{table}[htbp]\centering\small
-\caption{Temperature MAE ($^\circ$C) of raw and LightGBM forecasts, 12 stations, 2025-09-01 to 2026-10-25. Gain is the relative MAE reduction, with a 95\% block-bootstrap interval.}\label{tab:temp}
+\subsection{Temperature}
+The corrected forecasts have a lower MAE than the raw ones for every model, lead and target, and none of the 95\% intervals includes zero (Table~\ref{tab:temp}, Figure~\ref{fig:lead}). At lead 1 the $T_{\max}$ MAE goes from 1.74 to 0.89\,$^\circ$C for IFS, from 1.80 to 0.90 for AIFS and from 1.53 to 0.93 for GFS. The reduction gets smaller with lead and is 15--31\% at day 7. At Sfax the raw IFS and AIFS $T_{\max}$ errors are larger (2.1--2.2\,$^\circ$C at lead 1), possibly because the sea breeze is not resolved, and the reduction at lead 1 is 63\%. The reduction is of similar size in all seasons (30--51\% for $T_{\max}$ at leads 1--3).
+
+\begin{table}[t]
+\caption{Temperature MAE ($^\circ$C) of the raw and LightGBM forecasts, all stations. Gain is the relative MAE reduction with a 95\% block-bootstrap interval.}
+\label{tab:temp}
+\centering\small
 \input{tab_temperature}
 \end{table}
 
-\begin{figure}[htbp]\centering
+\begin{figure}[t]
+\centering
 \includegraphics[width=\linewidth]{mae_by_lead.png}
-\caption{MAE by lead: raw (dashed), 30-day bias correction, linear MOS and LightGBM.}\label{fig:lead}
+\caption{MAE by lead time for the raw forecast (dashed), the 30-day bias correction, linear MOS and LightGBM.}
+\label{fig:lead}
 \end{figure}
 
-\paragraph{Comparison with simple corrections.} Table~\ref{tab:base} shows that a 30-day running bias correction already removes most of the error. Pooled over leads, LightGBM is better than linear MOS by 2.7--4.0\% for IFS (95\% CI 1.3--5.9\%) and 2.2--3.3\% for GFS. For AIFS the difference is 0.5--0.8\% and not significant. Against the 30-day bias correction LightGBM gains 6\% for IFS and 7--15\% for GFS, but only 0.7\% ($T_{\max}$, not significant) and 4.6\% ($T_{\min}$) for AIFS, which suggests that the AIFS errors are closer to a constant offset. On the rows where all three models are available, the corrected MAE is 1.21\,$^\circ$C for AIFS, 1.24 for IFS and 1.36 for GFS (raw: 1.89, 1.89 and 1.99).
+A 30-day running bias correction already removes most of the error (Table~\ref{tab:base}). Pooled over leads, LightGBM is better than linear MOS by 2.7--4.0\% for IFS (95\% CI 1.3--5.9\%) and by 2.2--3.3\% for GFS. For AIFS the difference is 0.5--0.8\% and not significant. Against the 30-day bias correction LightGBM gains 6\% for IFS and 7--15\% for GFS, but only 0.7\% ($T_{\max}$, not significant) and 4.6\% ($T_{\min}$) for AIFS, which suggests that the AIFS errors are closer to a constant offset. On the rows where all three models are available the corrected MAE is 1.21\,$^\circ$C for AIFS, 1.24 for IFS and 1.36 for GFS, against 1.89, 1.89 and 1.99 before correction.
 
-\begin{table}[htbp]\centering\small
-\caption{MAE ($^\circ$C) of all temperature methods at leads 1, 4 and 7. Lowest value in bold.}\label{tab:base}
+\begin{table}[t]
+\caption{MAE ($^\circ$C) of all temperature methods at leads 1, 4 and 7. The lowest value in each row is in bold.}
+\label{tab:base}
+\centering\small
 \input{tab_baselines}
 \end{table}
 
-\paragraph{Intervals.} The quantile model on its own gives intervals that are too narrow: 69--78\% of observations fall inside the nominal 80\% interval. After conformal recalibration the coverage is 80.2--83.5\%, with intervals 9--34\% wider (Table~\ref{tab:int}).
+\subsection{Intervals}
+The quantile model on its own gives intervals that are too narrow: 69--78\% of the observations fall inside the nominal 80\% interval. After conformal recalibration the coverage is 80.2--83.5\%, with intervals 9--34\% wider (Table~\ref{tab:int}). For AIFS $T_{\min}$ the recalibrated interval is somewhat too wide (83.5\%), possibly because the AIFS calibration window starts with only a few months of predictions.
 
-\begin{table}[htbp]\centering\small
-\caption{Coverage and mean width ($^\circ$C) of the 80\% intervals.}\label{tab:int}
+\begin{table}[t]
+\caption{Coverage and mean width ($^\circ$C) of the 80\% intervals.}
+\label{tab:int}
+\centering\small
 \input{tab_intervals}
 \end{table}
 
-\paragraph{Rain.} Used as a yes/no forecast, the raw models have a negative Brier skill score ($-0.28$ to $-0.45$) because they forecast rain too often. The calibrated LightGBM reaches 0.19--0.21 with a ROC AUC of 0.87--0.88 (Table~\ref{tab:rain}, Fig.~\ref{fig:rel}). Logistic regression scores 0.17--0.23, so for rain occurrence most of the benefit comes from calibration. Heavy rain ($\ge$10\,mm, 822 station-days) is still poorly forecast: our warning rule finds 46--53\% of the events (26--37\% for the raw forecasts), but 73--79\% of its warnings are false alarms.
+\subsection{Rain}
+Used as a yes/no forecast, the raw models have a negative Brier skill score ($-0.28$ to $-0.45$), because they forecast rain on too many days. The calibrated LightGBM reaches 0.19--0.21 with a ROC AUC of 0.87--0.88 (Table~\ref{tab:rain}, Figure~\ref{fig:rel}). Logistic regression scores 0.17--0.23, so for rain occurrence most of the benefit comes from calibration and not from the choice of model. Heavy rain is still poorly forecast. Of the 822 station-days with at least 10\,mm, the warning rule finds 46--53\%, against 26--37\% for the raw forecasts, but 73--79\% of its warnings are false alarms. On wet days the MAE of the amount is 5.2 and 5.2\,mm for IFS and GFS (raw: 6.1 and 6.3\,mm), but 5.4\,mm for AIFS against 5.3\,mm raw.
 
-\begin{table}[htbp]\centering\small
-\caption{Rain occurrence ($\ge$1\,mm), leads 1--6. BSS is the Brier skill score against climatology.}\label{tab:rain}
+\begin{table}[t]
+\caption{Rain occurrence ($\ge$1\,mm), leads 1--6. BSS is the Brier skill score against climatology.}
+\label{tab:rain}
+\centering\small
 \input{tab_rain}
 \end{table}
 
-\begin{figure}[htbp]\centering
+\begin{figure}[t]
+\centering
 \includegraphics[width=\linewidth]{rain_reliability.png}
-\caption{Reliability of the rain probabilities.}\label{fig:rel}
+\caption{Reliability of the wet-day probabilities. Bins with fewer than 10 cases are not shown.}
+\label{fig:rel}
 \end{figure}
 
-\paragraph{SHAP.} For the IFS $T_{\max}$ correction the inputs with the largest mean $|\text{SHAP}|$ are the forecast itself (0.85\,$^\circ$C), the 30-day bias (0.45) and climatology (0.35), then wind (0.18) and day of year (Fig.~\ref{fig:shap}). High forecasts are corrected downwards and low ones upwards, i.e.\ towards climatology, and strong forecast wind lowers $T_{\max}$. For $T_{\min}$ the 30-day bias comes first (0.65), then the forecast (0.59), latitude and dew point. For rain the forecast amount (0.91) and cloud cover (0.55) matter most. The pull towards climatology hurts on extreme days. On 2026-08-23 Sfax reached 45.7\,$^\circ$C, IFS forecast 39.7\,$^\circ$C one day ahead, and the model added only 0.4\,$^\circ$C. Compared with an average correction of $+1.25$, the high forecast value contributed $-2.0$ and the recent bias $+0.6$. The corrected forecast was still 5.6\,$^\circ$C too low.
+\subsection{What the corrections depend on}
+For the IFS $T_{\max}$ correction the predictors with the largest mean $|\mathrm{SHAP}|$ are the forecast itself (0.85\,$^\circ$C), the 30-day bias (0.45) and climatology (0.35), followed by wind (0.18) and day of year (Figure~\ref{fig:shap}). High forecasts are corrected downwards and low ones upwards, i.e.\ towards climatology, and strong forecast wind lowers $T_{\max}$. For $T_{\min}$ the 30-day bias comes first (0.65), then the forecast (0.59), latitude and dew point. For rain the forecast amount (0.91) and cloud cover (0.55) matter most.
 
-\begin{figure}[htbp]\centering
+The pull towards climatology works against the forecast on extreme days. On 2026-08-23 Sfax reached 45.7\,$^\circ$C. IFS forecast 39.7\,$^\circ$C one day ahead, and the model added only 0.4\,$^\circ$C: compared with the average correction of $+1.25$, the high forecast value contributed $-2.0$ and the recent bias $+0.6$. The corrected forecast was still 5.6\,$^\circ$C too low. SHAP describes what the model uses, not what causes the errors.
+
+\begin{figure}[t]
+\centering
 \includegraphics[width=0.49\linewidth]{shap_tmax.png}\hfill
 \includegraphics[width=0.49\linewidth]{case_tmax_2026-08-23.png}
-\caption{Left: SHAP values of the IFS $T_{\max}$ correction. Right: Sfax, 2026-08-23, lead 1 (base value 1.25\,$^\circ$C).}\label{fig:shap}
+\caption{Left: SHAP values of the IFS $T_{\max}$ correction in the test period. Right: contributions for Sfax on 2026-08-23 at lead 1 (base value 1.25\,$^\circ$C). Predictor names are as in the code: \texttt{fc\_} forecast, \texttt{bias30\_} 30-day mean error, \texttt{clim\_} climatology, \texttt{doy} day of year.}
+\label{fig:shap}
 \end{figure}
 
-\paragraph{GRU.} We also trained a GRU, similar in spirit to the neural post-processing of \cite{rasp2018}, on the same IFS rows, months and target. Its inputs are the last 14 days of observations plus the 17 LightGBM inputs. Its MAE is within 0.03\,$^\circ$C of LightGBM at all leads ($T_{\max}$ lead 1: 0.887 vs 0.898; lead 7: 1.769 vs 1.794), so the longer observation history adds little to the 30-day bias.
+\subsection{GRU}
+A GRU was trained on the same IFS rows, months and target. Its inputs are the observations of the last 14 days plus the 17 LightGBM predictors. Its MAE is within 0.03\,$^\circ$C of LightGBM at all leads ($T_{\max}$ lead 1: 0.887 against 0.898; lead 7: 1.769 against 1.794). The longer observation history therefore adds little to the 30-day bias predictor.
 
-\paragraph{Drought.} As a side experiment we forecast SPI-3 \cite{mckee1993spi} 1--3 months ahead from ERA5 monthly rain (1991 onwards), using current SPI-1/3/6, month and the NAO index, with yearly retraining and test years from 2011. The MAE is 0.61 at one month (no change: 0.66, climatology: 0.81) and 0.69 at two months (0.93 and 0.81). At three months it is worse than climatology (0.88 vs 0.81). The model also finds fewer drought months (SPI $<-1$) than persistence, 31\% against 47\% at one month.
+\subsection{Drought outlook}
+As a side experiment we forecast SPI-3 \citep{mckee1993spi} 1--3 months ahead from ERA5 monthly rain \citep{hersbach2020} from 1991 onwards. The predictors are the current SPI-1, SPI-3 and SPI-6, the month and the NAO index; the model is retrained every year and tested on 2011 onwards. The MAE is 0.61 at one month (persistence 0.66, climatology 0.81) and 0.69 at two months (0.93 and 0.81). At three months it is worse than climatology (0.88 against 0.81). The model also detects fewer drought months (SPI $<-1$) than persistence, 31\% against 47\% at one month.
 
 \section{Limitations}
-The test period is only 14 months. AIFS has the shortest archive, so its first models are trained on fewer rows. Gab\`es has SYNOP reports only from 2019, and many night reports from Gafsa are missing. Open-Meteo keeps one deterministic run per day, so ensemble information is not used. The comparison between the three models is for corrected daily extremes at these stations only.
+\label{sec:limits}
+The test period covers only 14 months, and AIFS has the shortest archive, so its first models are trained on fewer rows. Open-Meteo keeps one deterministic run per day, so ensemble information is not used. The LightGBM settings were not tuned, so the gap to linear MOS may be slightly underestimated. Many comparisons are reported without correction for multiple testing, which matters for the small differences (LightGBM against linear MOS) but not for the large ones (corrected against raw). Finally, the comparison of the three models is only for corrected daily extremes at these 12 stations.
 
 \section{Conclusion}
-For these 12 stations a local correction removes 30--50\% of the temperature error of all three models, and turns rain forecasts that are worse than climatology into calibrated probabilities. AIFS gives the lowest corrected error. Its errors are mostly a stable offset, so a running bias correction or linear MOS already gets most of the gain. For IFS and GFS, LightGBM adds a small but significant improvement. The quantile intervals need conformal recalibration to reach their nominal coverage. Heavy rain and record heat remain the weak points. Ensemble input (ECMWF ENS, AIFS ENS) and a longer AIFS archive are the obvious next steps.
+\label{sec:conclusion}
+At these 12 stations a local correction removes 30--50\% of the temperature error of IFS, AIFS and GFS at short leads, and turns rain forecasts that are worse than climatology into calibrated probabilities. AIFS gives the lowest error after correction. Its errors are mostly a stable offset, so a running bias correction or linear MOS already captures most of the gain; for IFS and GFS, LightGBM adds a small but significant improvement. The quantile intervals need conformal recalibration to reach their nominal coverage. Heavy rain and record heat are the main weaknesses. Natural next steps are ensemble input (ECMWF ENS, AIFS ENS) and a longer AIFS archive.
 
-\paragraph{Code.} \url{https://github.com/KiraiEEE/Weather}
+\section*{Code and data availability}
+Code, tests and result tables: \url{https://github.com/KiraiEEE/Weather}. The data are downloaded by the scripts from NOAA, Ogimet and Open-Meteo.
 
-\begin{thebibliography}{9}\small
-\bibitem{glahn1972} H.~R. Glahn and D.~A. Lowry. The use of Model Output Statistics (MOS) in objective weather forecasting. \emph{J. Appl. Meteor.}, 11:1203--1211, 1972.
-\bibitem{lang2024aifs} S.~Lang et al. AIFS -- ECMWF's data-driven forecasting system. \emph{arXiv:2406.01465}, 2024.
-\bibitem{ke2017lightgbm} G.~Ke et al. LightGBM: A highly efficient gradient boosting decision tree. \emph{NeurIPS}, 2017.
-\bibitem{romano2019cqr} Y.~Romano, E.~Patterson and E.~Cand\`es. Conformalized quantile regression. \emph{NeurIPS}, 2019.
-\bibitem{lundberg2020shap} S.~M. Lundberg et al. From local explanations to global understanding with explainable AI for trees. \emph{Nat. Mach. Intell.}, 2:56--67, 2020.
-\bibitem{mckee1993spi} T.~B. McKee, N.~J. Doesken and J.~Kleist. The relationship of drought frequency and duration to time scales. \emph{8th Conf. Applied Climatology}, 1993.
-\bibitem{rasp2018} S.~Rasp and S.~Lerch. Neural networks for postprocessing ensemble weather forecasts. \emph{Mon. Wea. Rev.}, 146:3885--3900, 2018.
+\section*{Acknowledgements}
+We thank Open-Meteo, NOAA NCEI and Ogimet for making forecasts and station reports freely available, and ECMWF and NCEP for the underlying model data.
+
+\begin{thebibliography}{99}
+\small
+
+\bibitem[Glahn and Lowry(1972)]{glahn1972}
+H.~R. Glahn and D.~A. Lowry.
+\newblock The use of Model Output Statistics (MOS) in objective weather forecasting.
+\newblock \emph{Journal of Applied Meteorology}, 11:\penalty0 1203--1211, 1972.
+
+\bibitem[Hersbach et~al.(2020)]{hersbach2020}
+H.~Hersbach et~al.
+\newblock The ERA5 global reanalysis.
+\newblock \emph{Quarterly Journal of the Royal Meteorological Society}, 146:\penalty0 1999--2049, 2020.
+
+\bibitem[Ke et~al.(2017)]{ke2017lightgbm}
+G.~Ke, Q.~Meng, T.~Finley, T.~Wang, W.~Chen, W.~Ma, Q.~Ye, and T.-Y. Liu.
+\newblock LightGBM: A highly efficient gradient boosting decision tree.
+\newblock In \emph{Advances in Neural Information Processing Systems 30}, 2017.
+
+\bibitem[Lang et~al.(2024)]{lang2024aifs}
+S.~Lang et~al.
+\newblock AIFS -- ECMWF's data-driven forecasting system.
+\newblock \emph{arXiv preprint arXiv:2406.01465}, 2024.
+
+\bibitem[Lundberg et~al.(2020)]{lundberg2020shap}
+S.~M. Lundberg, G.~Erion, H.~Chen, A.~DeGrave, J.~M. Prutkin, B.~Nair, R.~Katz, J.~Himmelfarb, N.~Bansal, and S.-I. Lee.
+\newblock From local explanations to global understanding with explainable AI for trees.
+\newblock \emph{Nature Machine Intelligence}, 2:\penalty0 56--67, 2020.
+
+\bibitem[McKee et~al.(1993)]{mckee1993spi}
+T.~B. McKee, N.~J. Doesken, and J.~Kleist.
+\newblock The relationship of drought frequency and duration to time scales.
+\newblock In \emph{Proceedings of the 8th Conference on Applied Climatology}, pages 179--184, 1993.
+
+\bibitem[Rasp and Lerch(2018)]{rasp2018}
+S.~Rasp and S.~Lerch.
+\newblock Neural networks for postprocessing ensemble weather forecasts.
+\newblock \emph{Monthly Weather Review}, 146:\penalty0 3885--3900, 2018.
+
+\bibitem[Romano et~al.(2019)]{romano2019cqr}
+Y.~Romano, E.~Patterson, and E.~Cand\`es.
+\newblock Conformalized quantile regression.
+\newblock In \emph{Advances in Neural Information Processing Systems 32}, 2019.
+
+\bibitem[Smith et~al.(2011)]{smith2011}
+A.~Smith, N.~Lott, and R.~Vose.
+\newblock The Integrated Surface Database: recent developments and partnerships.
+\newblock \emph{Bulletin of the American Meteorological Society}, 92:\penalty0 704--708, 2011.
+
+\bibitem[Vannitsem et~al.(2021)]{vannitsem2021}
+S.~Vannitsem et~al.
+\newblock Statistical postprocessing for weather forecasts: review, challenges, and avenues in a big data world.
+\newblock \emph{Bulletin of the American Meteorological Society}, 102:\penalty0 E681--E699, 2021.
+
+\bibitem[Zippenfenig(2023)]{openmeteo}
+P.~Zippenfenig.
+\newblock Open-Meteo.com Weather API.
+\newblock Zenodo, 2023.
+
 \end{thebibliography}
+
 \end{document}

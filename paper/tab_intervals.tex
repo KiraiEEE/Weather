@@ -1,14 +1,14 @@
 \begin{tabular}{llrrrr}
 \toprule
- & & \multicolumn{2}{c}{Quantile LGBM} & \multicolumn{2}{c}{+ Conformal} \\
+ & & \multicolumn{2}{c}{Quantile LightGBM} & \multicolumn{2}{c}{+ Conformal} \\
 \cmidrule(lr){3-4}\cmidrule(lr){5-6}
 Model & Target & Cover \% & Width & Cover \% & Width \\
 \midrule
-AIFS & tmax & 73.4 & 3.25 & 81.4 & 3.89 \\
-AIFS & tmin & 69.3 & 3.25 & 83.5 & 4.34 \\
-GFS & tmax & 75.9 & 3.83 & 81.2 & 4.35 \\
-GFS & tmin & 73.4 & 3.89 & 80.3 & 4.49 \\
-IFS & tmax & 77.5 & 3.80 & 81.3 & 4.13 \\
-IFS & tmin & 76.2 & 3.66 & 80.2 & 4.00 \\
+IFS & $T_{\max}$ & 77.5 & 3.80 & 81.3 & 4.13 \\
+IFS & $T_{\min}$ & 76.2 & 3.66 & 80.2 & 4.00 \\
+AIFS & $T_{\max}$ & 73.4 & 3.25 & 81.4 & 3.89 \\
+AIFS & $T_{\min}$ & 69.3 & 3.25 & 83.5 & 4.34 \\
+GFS & $T_{\max}$ & 75.9 & 3.83 & 81.2 & 4.35 \\
+GFS & $T_{\min}$ & 73.4 & 3.89 & 80.3 & 4.49 \\
 \bottomrule
 \end{tabular}
