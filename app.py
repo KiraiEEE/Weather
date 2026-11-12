@@ -208,6 +208,69 @@ def results_summary():
     return path.read_text(encoding="utf-8").replace("](figures/", "](/gradio_api/file=results/figures/")
 
 
+def box(title, note, accent=False):
+    border = "var(--color-accent)" if accent else "var(--border-color-primary)"
+    return (f'<div style="border:1px solid {border};border-radius:8px;padding:6px 10px;margin:3px 0;'
+            f'background:var(--block-background-fill);min-width:120px">'
+            f'<div style="font-weight:600">{title}</div><div style="font-size:12px;opacity:.75">{note}</div></div>')
+
+
+def column(*boxes):
+    return f'<div style="display:flex;flex-direction:column;justify-content:center">{"".join(boxes)}</div>'
+
+
+ARROW = '<div style="align-self:center;font-size:20px;opacity:.6;padding:0 4px">&rarr;</div>'
+
+WORKFLOW = (
+    '<div style="display:flex;flex-wrap:wrap;align-items:stretch;gap:2px;color:var(--body-text-color)">'
+    + column(box("NOAA + Ogimet", "SYNOP station reports"), box("Open-Meteo", "archived IFS, AIFS, GFS runs"))
+    + ARROW
+    + column(box("1 Observations", "daily Tmax, Tmin, rain"), box("2 Forecasts", "same UTC windows, leads 1-7"))
+    + ARROW + column(box("3 Quality control", "range, spikes, stuck values"))
+    + ARROW + column(box("4 Features", "only data known at issue time"))
+    + ARROW + column(box("5 Walk-forward", "retrain monthly, 8-day gap", accent=True))
+    + ARROW
+    + column(box("6 Report", "scores, CIs, figures"), box("7 SHAP", "why the corrections"), box("Paper", "paper/main.pdf"))
+    + "</div>"
+    + '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:6px">'
+    + box("8 GRU (optional)", "same rows as step 5") + box("9 Drought (optional)", "SPI-3, 1-3 months ahead")
+    + "</div>"
+)
+
+DETAILS = """
+- **Truth**: WMO SYNOP reports. Tmax over 06-18 UTC, Tmin over the 24 h to 06 UTC, rain 06-06 UTC.
+- **Forecasts**: for lead L and day D, every hour comes from the run available at the end of day D - L.
+- **Temperature**: LightGBM predicts the error of the raw forecast (10/50/90% quantiles); the interval is then
+  recalibrated with conformal prediction on the past year.
+- **Rain**: calibrated probability of a wet day (>= 1 mm), then the amount on wet days.
+- **Testing**: train on data before each month, predict that month; test period 2025-09 to 2026-10;
+  95% intervals from resampling whole weeks.
+"""
+
+
+def summary_plot():
+    """MAE of each method averaged over leads, per model (Tmax and Tmin)."""
+    path = RESULTS / "temperature_mae.csv"
+    if not path.exists():
+        return None
+    mae_table = pd.read_csv(path).groupby(["model", "target"])[
+        ["raw", "bias_corrected", "linear", "lightgbm"]].mean()
+    labels = {"raw": "raw", "bias_corrected": "30-day bias corr.", "linear": "linear MOS", "lightgbm": "LightGBM"}
+    colors = ["#eb6834", "#eda100", "#1baf7a", "#2a78d6"]
+    fig, axes = plt.subplots(1, 2, figsize=(10, 3.1), sharey=True)
+    for ax, target in zip(axes, ("tmax", "tmin"), strict=True):
+        x = np.arange(len(MODELS))
+        for i, (col, label) in enumerate(labels.items()):
+            values = [mae_table.loc[(m, target), col] for m in MODELS]
+            ax.bar(x + (i - 1.5) * 0.2, values, 0.2, color=colors[i], label=label)
+        ax.set_xticks(x, list(MODELS))
+        ax.set_title(f"{target.capitalize()}, MAE averaged over leads 1-7")
+    axes[0].set_ylabel("°C")
+    fig.legend(*axes[0].get_legend_handles_labels(), loc="lower center", ncol=4, fontsize=8, frameon=False)
+    fig.tight_layout(rect=(0, 0.08, 1, 1))
+    return fig
+
+
 with gr.Blocks(title="TunCast") as demo:
     gr.Markdown("# TunCast\nCorrection of IFS, AIFS and GFS forecasts at 12 Tunisian stations.")
 
@@ -254,6 +317,13 @@ with gr.Blocks(title="TunCast") as demo:
             run_button = gr.Button("Run", variant="primary", scale=1)
         log_box = gr.Textbox(label="Output", lines=22, max_lines=22, autoscroll=True)
         run_button.click(run, command, log_box)
+
+    gr.Markdown("## How it works")
+    gr.HTML(WORKFLOW)
+    with gr.Row():
+        gr.Markdown(DETAILS)
+        summary = gr.Plot(show_label=False)
+    demo.load(summary_plot, None, summary)
 
 
 if __name__ == "__main__":
