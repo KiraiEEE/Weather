@@ -35,10 +35,12 @@ uv pip install -r requirements.txt --python .venv/Scripts/python.exe
 .venv/Scripts/python.exe app.py      # then open http://127.0.0.1:7860
 ```
 
-Three tabs: **Results** (test-period forecasts for any station, model, variable and lead),
-**Try the model** (load a real case, change the inputs, see the corrected forecast and its SHAP
-explanation) and **Run** (run any pipeline step, the tests or the paper build, with live output).
-It needs the outputs of steps 1-6, so run the pipeline once first (from the Run tab or the commands below).
+One page. A map of the stations coloured by how much the correction helps; a dProg/dt chart for any
+day (the forecasts issued 7 to 1 days before, raw and corrected, against what was measured); error by
+lead at the chosen station; sliders to change a forecast and see how the correction and its SHAP
+explanation respond; and a timing figure showing which UTC hours make up each daily value and what is
+known when a forecast is issued. Pipeline steps can be re-run from the bottom of the page.
+It needs the outputs of steps 1-6, so run the pipeline once first.
 
 ## Run
 
