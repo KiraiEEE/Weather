@@ -100,7 +100,7 @@ def station_map(model, station):
     wmo = IDS[station]
     fig.add_trace(go.Scattergeo(lat=[STATIONS[wmo][1]], lon=[STATIONS[wmo][2]], mode="markers", hoverinfo="skip",
                                 marker=dict(size=24, color="rgba(0,0,0,0)", line=dict(width=2, color=BRICK))))
-    fig.update_geos(lonaxis_range=[7.4, 12.0], lataxis_range=[32.8, 37.7], showcountries=True,
+    fig.update_geos(lonaxis_range=[6.6, 12.9], lataxis_range=[32.9, 37.6], showcountries=True,
                     countrycolor="#bdb6a6", showcoastlines=True, coastlinecolor="#8c8473", showland=True,
                     landcolor="#f1ece1", showocean=True, oceancolor="#dfe7ea", resolution=50, bgcolor="rgba(0,0,0,0)")
     fig.update_layout(height=430, margin=dict(l=0, r=0, t=0, b=0), showlegend=False,
